@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dream11 AI ULTIMATE (60 Teams)</title>
+
+<style>
+body{font-family:Arial;background:#0b0b0b;color:#fff;padding:15px}
+input,select{width:100%;padding:10px;margin:5px 0;border-radius:6px;border:none}
+button{padding:12px;width:100%;margin-top:10px;background:#00e5ff;color:black;border:none;border-radius:6px}
+.team{background:#1e1e1e;margin-top:10px;padding:10px;border-radius:8px}
+.row{display:flex;gap:10px}
+.row > *{flex:1}
+label{font-size:12px;color:#aaa}
+.badge{font-size:10px;padding:2px 6px;border-radius:6px;background:#333;margin-left:6px}
+</style>
+</head>
+<body>
+
+<h2>🤖 Dream11 AI ULTIMATE (60 Teams)</h2>
+<p>Exposure + Modes + Locks + Exclude + Credits + Toss AI + Report</p>
+
+<div class="row">
+  <div>
+    <label>Exposure % (30–90)</label>
+    <input id="exp" type="number" value="70" min="30" max="90">
+  </div>
+  <div>
+    <label>Mode</label>
+    <select id="mode">
+      <option value="safe">SAFE</option>
+      <option value="gl">GL</option>
+      <option value="ultra">ULTRA</option>
+    </select>
+  </div>
+</div>
+
+<div id="inputs"></div>
+
+<div class="row">
+  <div>
+    <label>Toss Result</label>
+    <select id="toss">
+      <option value="none">No Toss</option>
+      <option value="bat">Bat First Advantage</option>
+      <option value="bowl">Bowl First Advantage</option>
+    </select>
+  </div>
+</div>
+
+<div class="row">
+  <button onclick="generateTeams()">⚡ Generate 60 Teams</button>
+  <button onclick="regenerateShuffle()">🔁 Regenerate (Shuffle)</button>
+</div>
+
+<div class="row">
+  <button onclick="download60()">📤 Download TXT</button>
+  <button onclick="downloadPDF()">📄 Download PDF</button>
+</div>
+
+<div class="row">
+  <button onclick="copyAll()">📋 Copy All Teams</button>
+  <button onclick="showExposure()">📊 Exposure Report</button>
+</div>
+
+<input id="search" placeholder="🔎 Filter by player name" oninput="filterTeams()">
+
+<div id="teams"></div>
+
+<script>
+// inputs (24) + lock/exclude toggles
+for(let i=0;i<24;i++){
+ document.getElementById("inputs").innerHTML +=
+ `<input id="p${i}" placeholder="Player ${i+1}">
+  <div class="row">
+   <select id="r${i}">
+     <option value="bat">BAT</option>
+     <option value="bowl">BOWL</option>
+     <option value="ar">AR</option>
+     <option value="wk">WK</option>
+   </select>
+   <select id="l${i}">
+     <option value="0">Normal</option>
+     <option value="1">Lock</option>
+     <option value="-1">Exclude</option>
+   </select>
+  </div>`;
+}
+
+function buildPlayers(){
+ let arr=[];
+ let arr=[];
+ for(let i=0;i<24;i++){
+  let name=document.getElementById("p"+i).value;
+  let role=document.getElementById("r"+i).value;
+  let lock=parseInt(document.getElementById("l"+i).value);
+  if(name==="") return null;
+
+  let form=Math.floor(Math.random()*10)+1;
+  let credits=(Math.random()*3+7).toFixed(1); // 7–10 credits
+  let selection=Math.random()*100;
+  let consistency=Math.random()*10;
+
+  let score=(form*2)+consistency+(100-selection);
+  if(role==="ar") score+=20;
+  if(role==="wk") score+=10;
+
+  arr.push({name,role,score,form,selection,count:0,lock,credits:parseFloat(credits)});
+ }
+ return arr;
+}
+
+let saved60="";
+let tableData=[];
+let lastHTML="";
+
+function generateTeams(){
+ let players=buildPlayers();
+ if(!players){alert("Fill all 24 players");return;}
+
+ const expPct = Math.max(30, Math.min(90, parseInt(document.getElementById("exp").value)||70));
+ const mode = document.getElementById("mode").value;
+
+ let maxExposure = Math.ceil(60 * (expPct/100));
+ let noise = mode==="safe" ? 2 : (mode==="gl" ? 5 : 9);
+ let diffBoost = mode==="safe" ? 0.5 : (mode==="gl" ? 1.5 : 3);
+
+ let html="";
+ let text="";
+ tableData=[];
+
+ for(let t=0;t<60;t++){
+
+  let toss=document.getElementById("toss").value;
+  let modified=players.map(p=>({
+    ...p,
+    score: p.score + (toss==="bat" && p.role==="bat" ? 5 : 0) + (toss==="bowl" && p.role==="bowl" ? 5 : 0)
+    ...p,
+    score: p.score + (Math.random()*noise - noise/2) - (p.count*diffBoost)
+  }));
+
+  let sorted=[...modified].sort((a,b)=> (b.score - a.score));
+
+  let team=[];
+  let totalCredits=0;
+  let rolesUsed={wk:0,bat:0,ar:0,bowl:0};
+
+  // include locked players first
+  let locked = sorted.filter(p=>p.lock===1);
+  for(let p of locked){
+    if(team.length<11){ if(totalCredits + p.credits <= 100){
+        if(totalCredits + p.credits <= 100){ team.push(p); totalCredits += p.credits; } rolesUsed[p.role]++; p.count++; totalCredits += p.credits;
+      } }
+  }
+
+  // exclude players
+  let pool = sorted.filter(p=>p.lock!==-1);
+
+  // ensure at least one role
+  for(let role of ["wk","bat","ar","bowl"]){
+    let cand = pool.find(p=>p.role===role && !team.find(x=>x.name===p.name) && p.count<maxExposure);
+    if(cand && team.length<11){ team.push(cand); rolesUsed[role]++; cand.count++; }
+  }
+
+  // fill remaining
+  for(let p of pool){
+    if(team.length>=11) break;
+    if(p.count>=maxExposure) continue;
+    if(!team.find(x=>x.name===p.name)){
+      if(totalCredits + p.credits <= 100){
+      if(totalCredits + p.credits <= 100){ team.push(p); totalCredits += p.credits; } p.count++; totalCredits += p.credits;
+    }
+    }
+  }
+
+  // fallback
+  for(let p of pool){
+    if(team.length>=11) break;
+    if(!team.find(x=>x.name===p.name)){
+      if(totalCredits + p.credits <= 100){ team.push(p); totalCredits += p.credits; }
+    }
+  }
+
+  // captain & vc
+  let topForm=[...team].sort((a,b)=>b.form-a.form).slice(0,3);
+  let captain = topForm[Math.floor(Math.random()* (mode==="safe"?1: topForm.length))].name;
+  let vc = team.filter(p=>p.name!==captain).sort((a,b)=>a.selection-b.selection)[0].name;
+
+  let names=team.map(p=>p.name);
+  let creditUsed=totalCredits.toFixed(1);
+
+  let backup=[];
+  for(let p of pool){
+    if(backup.length>=4) break;
+    if(!names.includes(p.name)) backup.push(p.name);
+  }
+
+  html+=`<div class="team">
+  <b>Team ${t+1}</b>
+  <span class="badge">${mode.toUpperCase()}</span><br>
+  ${names.join(", ")}<br>
+  ⭐ C: ${captain} | 🔥 VC: ${vc}<br>
+  🧩 Backup: ${backup.join(", ")}<br>💰 Credits: ${creditUsed}/100
+  </div>`;
+
+  text+=`Team ${t+1}: ${names.join(", ")} | C:${captain} VC:${vc} | Backup:${backup.join(", ")}\n`;
+
+  tableData.push({team:t+1, players:names.join(", "), captain, vc, backup:backup.join(", "), credits:creditUsed});
+ }
+
+ saved60=text;
+ lastHTML=html;
+ document.getElementById("teams").innerHTML=html;
+}
+
+function regenerateShuffle(){
+ if(!lastHTML){ generateTeams(); return; }
+ generateTeams();
+}
+
+function filterTeams(){
+ const q=(document.getElementById('search').value||'').toLowerCase();
+ if(!lastHTML) return;
+ if(!q){ document.getElementById('teams').innerHTML=lastHTML; return; }
+ const blocks = lastHTML.split('</div>').filter(Boolean);
+ const filtered = blocks.filter(b=>b.toLowerCase().includes(q)).join('</div>')+'</div>';
+ document.getElementById('teams').innerHTML = filtered || '<p>No match</p>';
+}
+
+function copyAll(){
+ if(!saved60){alert('Generate first');return;}
+ navigator.clipboard.writeText(saved60);
+ alert('Copied!');
+}
+
+function showExposure(){
+ if(tableData.length===0){alert('Generate first');return;}
+ const counts={};
+ tableData.forEach(t=>{
+  t.players.split(', ').forEach(p=>{counts[p]=(counts[p]||0)+1});
+ });
+ let msg='Exposure (out of 60):\n';
+ Object.entries(counts).sort((a,b)=>b[1]-a[1]).forEach(([k,v])=>{
+  msg+=`${k}: ${v} (${Math.round(v/60*100)}%)\n`;
+ });
+ alert(msg);
+}
+
+function download60(){
+ if(!saved60){alert("Generate first");return;}
+ let blob=new Blob([saved60],{type:"text/plain"});
+ let a=document.createElement("a");
+ a.href=URL.createObjectURL(blob);
+ a.download="dream11_ultimate_60_teams.txt";
+ a.click();
+}
+
+function downloadPDF(){
+ if(tableData.length===0){alert("Generate first");return;}
+ let win = window.open('', '', 'width=900,height=700');
+ let html = `<html><head><title>Dream11 Teams</title>
+ <style>
+ body{font-family:Arial}
+ table{border-collapse:collapse;width:100%}
+ th,td{border:1px solid #000;padding:6px;font-size:10px}
+ th{background:#eee}
+ </style></head><body>
+ <h2>Dream11 AI Teams</h2>
+ <table>
+ <tr><th>Team</th><th>Players</th><th>C</th><th>VC</th><th>Backup</th><th>Credits</th></tr>`;
+ tableData.forEach(t=>{
+  html+=`<tr>
+  <td>${t.team}</td>
+  <td>${t.players}</td>
+  <td>${t.captain}</td>
+  <td>${t.vc}</td>
+  <td>${t.backup}</td>
+  <td>${t.credits}</td>
+  </tr>`;
+ });
+ html+=`</table></body></html>`;
+ win.document.write(html);
+ win.document.close();
+ win.print();
+}
+</script>
+
+</body>
+</html>
